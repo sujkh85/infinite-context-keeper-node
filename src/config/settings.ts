@@ -6,6 +6,8 @@ import { PROJECT_ROOT } from "../paths.js";
 
 export type AppSettings = {
   dataDir: string;
+  /** MCP Project Brain 도구에서 project_id 생략 시 사용 */
+  defaultProjectId: string;
   contextUsageThresholdPercent: number;
   compactionThresholdRatio: number;
   summarizationStartRatio: number;
@@ -22,6 +24,7 @@ export type AppSettings = {
 
 const DEFAULTS: AppSettings = {
   dataDir: "./data",
+  defaultProjectId: "default",
   contextUsageThresholdPercent: 80,
   compactionThresholdRatio: 0.8,
   summarizationStartRatio: 0.75,
@@ -38,6 +41,7 @@ const DEFAULTS: AppSettings = {
 
 const CAMEL_MAP: Record<string, keyof AppSettings> = {
   data_dir: "dataDir",
+  default_project_id: "defaultProjectId",
   context_usage_threshold_percent: "contextUsageThresholdPercent",
   compaction_threshold_ratio: "compactionThresholdRatio",
   summarization_start_ratio: "summarizationStartRatio",
@@ -78,6 +82,7 @@ function yamlToPartialSettings(yamlDict: Record<string, unknown>): Partial<AppSe
     const key = CAMEL_MAP[k];
     if (!key || v === undefined) continue;
     if (key === "dataDir") partial.dataDir = String(v);
+    else if (key === "defaultProjectId") partial.defaultProjectId = String(v);
     else if (key === "openaiApiKey") partial.openaiApiKey = v == null || v === "" ? null : String(v);
     else if (key === "openaiBaseUrl") partial.openaiBaseUrl = String(v);
     else if (key === "embeddingModel") partial.embeddingModel = String(v);
@@ -107,7 +112,14 @@ function envOverrides(): Partial<AppSettings> {
       out.openaiApiKey = raw === "" ? null : raw;
       continue;
     }
-    if (field === "dataDir" || field === "embeddingModel" || field === "tiktokenEncoding" || field === "openaiBaseUrl" || field === "compactionModel") {
+    if (
+      field === "dataDir" ||
+      field === "defaultProjectId" ||
+      field === "embeddingModel" ||
+      field === "tiktokenEncoding" ||
+      field === "openaiBaseUrl" ||
+      field === "compactionModel"
+    ) {
       (out as Record<string, string>)[field] = raw;
       continue;
     }

@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
+import { ProjectBrainStore } from "./project-brain-store.js";
 
 export type MemoryListItem = {
   memory_id: string;
@@ -14,6 +15,7 @@ export type MemoryListItem = {
 export class SqliteMemoryStore {
   private readonly db: DatabaseSync;
   readonly dataDir: string;
+  readonly brain: ProjectBrainStore;
 
   constructor(dataDir: string) {
     this.dataDir = dataDir;
@@ -21,6 +23,7 @@ export class SqliteMemoryStore {
     const dbPath = join(dataDir, "infinite_context_keeper.sqlite");
     this.db = new DatabaseSync(dbPath);
     this.ensureSchema();
+    this.brain = new ProjectBrainStore(this.db);
   }
 
   private ensureSchema(): void {
@@ -51,6 +54,77 @@ export class SqliteMemoryStore {
       );
       CREATE INDEX IF NOT EXISTS idx_compaction_runs_lookup
         ON compaction_runs(project_id, session_id, ran_at);
+
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        goal TEXT,
+        created_at DATETIME,
+        last_active DATETIME,
+        status TEXT DEFAULT 'active'
+      );
+
+      CREATE TABLE IF NOT EXISTS milestones (
+        id TEXT PRIMARY KEY,
+        project_id TEXT,
+        title TEXT,
+        description TEXT,
+        order_num INTEGER,
+        status TEXT DEFAULT 'pending',
+        completed_at DATETIME
+      );
+      CREATE INDEX IF NOT EXISTS idx_milestones_project
+        ON milestones(project_id);
+
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        milestone_id TEXT,
+        title TEXT,
+        description TEXT,
+        status TEXT DEFAULT 'todo',
+        priority INTEGER,
+        estimated_hours REAL,
+        actual_hours REAL,
+        dependencies TEXT,
+        file_path TEXT,
+        updated_at DATETIME
+      );
+      CREATE INDEX IF NOT EXISTS idx_tasks_milestone
+        ON tasks(milestone_id);
+
+      CREATE TABLE IF NOT EXISTS decisions (
+        id TEXT PRIMARY KEY,
+        project_id TEXT,
+        title TEXT,
+        content TEXT,
+        timestamp DATETIME,
+        related_files TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_decisions_project
+        ON decisions(project_id);
+
+      CREATE TABLE IF NOT EXISTS knowledge (
+        id TEXT PRIMARY KEY,
+        project_id TEXT,
+        category TEXT,
+        title TEXT,
+        content TEXT,
+        vector BLOB
+      );
+      CREATE INDEX IF NOT EXISTS idx_knowledge_project
+        ON knowledge(project_id);
+
+      CREATE TABLE IF NOT EXISTS project_files (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        rel_path TEXT NOT NULL,
+        kind TEXT,
+        mtime_ms INTEGER,
+        scanned_at DATETIME,
+        UNIQUE(project_id, rel_path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_project_files_project
+        ON project_files(project_id);
     `);
   }
 
