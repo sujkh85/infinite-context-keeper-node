@@ -1,0 +1,12 @@
+# Infinite Context Keeper — 기본 설정
+data_dir: "./data"
+context_usage_threshold_percent: 80
+compaction_threshold_ratio: 0.8
+summarization_start_ratio: 0.75
+embedding_provider: "local_transformers"
+embedding_model: "all-MiniLM-L6-v2"
+tiktoken_encoding: "cl100k_base"
+compaction_cooldown_seconds: 300
+compaction_max_runs_per_window: 6
+compaction_rate_window_seconds: 3600
+max_inject_tokens_default: 2000

@@ -1,0 +1,15 @@
+# Infinite Context Keeper — 설정 예시
+# 사용: ICK_SETTINGS_YAML=/절대/경로/config.yaml
+
+data_dir: "./data"
+context_usage_threshold_percent: 80
+compaction_threshold_ratio: 0.8
+summarization_start_ratio: 0.75
+tiktoken_encoding: "cl100k_base"
+embedding_model: "all-MiniLM-L6-v2"
+openai_base_url: "https://api.openai.com/v1"
+compaction_model: "gpt-4o-mini"
+compaction_cooldown_seconds: 300
+compaction_max_runs_per_window: 6
+compaction_rate_window_seconds: 3600
+max_inject_tokens_default: 2000
