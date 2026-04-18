@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "infinite-context": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "infinite-context"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "ICK_SETTINGS_YAML": "${workspaceFolder}/config/config.example.yaml",
+        "ICK_OPENAI_API_KEY": "${env:ICK_OPENAI_API_KEY}"
+      }
+    }
+  }
+}

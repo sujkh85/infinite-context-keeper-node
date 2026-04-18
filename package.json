@@ -1,16 +1,35 @@
 {
-  "name": "infinite-context-keeper",
-  "version": "0.1.0",
+  "name": "infinite-context",
+  "version": "0.1.1",
   "description": "MCP server: persistent memory, compaction, semantic recall (Node.js port)",
   "type": "module",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "memory",
+    "sqlite",
+    "semantic-search",
+    "compaction",
+    "llm"
+  ],
+  "homepage": "https://github.com/sujkh85/infinite-context-keeper-node#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sujkh85/infinite-context-keeper-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sujkh85/infinite-context-keeper-node/issues"
+  },
   "engines": {
     "node": ">=22.5.0"
   },
   "bin": {
-    "infinite-context-keeper": "./dist/index.js"
+    "infinite-context": "bin/infinite-context.js",
+    "infinite-context-keeper": "bin/infinite-context.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "start": "node dist/index.js",
     "dev": "node --import tsx src/index.ts"
   },
@@ -27,6 +46,7 @@
     "typescript": "^5.7.0"
   },
   "files": [
+    "bin",
     "dist",
     "config"
   ],

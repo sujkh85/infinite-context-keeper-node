@@ -4,3 +4,4 @@ data/
 .env
 *.log
 .cache/
+.npmrc
