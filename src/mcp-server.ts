@@ -297,6 +297,8 @@ const TOOLS = [
   },
 ] as const;
 
+const UNIQUE_TOOLS = Array.from(new Map(TOOLS.map((tool) => [tool.name, tool])).values());
+
 export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemoryStore, semantic: SemanticMemoryStore) {
   await semantic.warmup();
 
@@ -305,7 +307,7 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
     { capabilities: { tools: {} } },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [...TOOLS] }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [...UNIQUE_TOOLS] }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const name = request.params.name;
