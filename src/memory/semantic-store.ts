@@ -231,6 +231,47 @@ export class SemanticMemoryStore {
     return docId;
   }
 
+  deleteMemoryById(params: { id: string; project_id: string; session_id?: string | null }): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT id FROM semantic_memories
+         WHERE id = ? AND project_id = ? AND (? IS NULL OR session_id = ?)`,
+      )
+      .get(params.id, params.project_id, params.session_id ?? null, params.session_id ?? null) as
+      | { id: string }
+      | undefined;
+    if (!row) return false;
+
+    if (this.vecEnabled) {
+      const meta = this.db
+        .prepare("SELECT vec_rowid FROM semantic_vec_meta WHERE memory_id = ?")
+        .get(params.id) as { vec_rowid: number } | undefined;
+      if (meta) {
+        this.db.prepare("DELETE FROM semantic_memories_vec WHERE rowid = ?").run(BigInt(meta.vec_rowid));
+        this.db.prepare("DELETE FROM semantic_vec_meta WHERE memory_id = ?").run(params.id);
+      }
+    }
+
+    const res = this.db.prepare("DELETE FROM semantic_memories WHERE id = ?").run(params.id);
+    return Number(res.changes ?? 0) > 0;
+  }
+
+  deleteMemoryByKey(params: { project_id: string; session_id: string; memory_key: string }): { deleted: number; ids: string[] } {
+    const rows = this.db
+      .prepare(
+        `SELECT id FROM semantic_memories
+         WHERE project_id = ? AND session_id = ? AND memory_key = ?`,
+      )
+      .all(params.project_id, params.session_id, params.memory_key) as Array<{ id: string }>;
+    if (rows.length === 0) return { deleted: 0, ids: [] };
+
+    const ids = rows.map((r) => r.id);
+    for (const id of ids) {
+      this.deleteMemoryById({ id, project_id: params.project_id, session_id: params.session_id });
+    }
+    return { deleted: ids.length, ids };
+  }
+
   private mapRowToChunk(r: {
     id: string;
     project_id: string;

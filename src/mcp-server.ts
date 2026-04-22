@@ -187,6 +187,21 @@ const TOOLS = [
     },
   },
   {
+    name: "delete_memory",
+    description:
+      "save_memory로 저장한 semantic_memories 항목을 삭제합니다. id 직접 삭제 또는 (project_id+session_id+key) 기준 삭제를 지원합니다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "semantic_memories의 id(sha256 doc id)" },
+        key: { type: "string", description: "save_memory에 사용한 key" },
+        project_id: { type: "string" },
+        session_id: { type: "string" },
+      },
+      required: ["project_id"],
+    },
+  },
+  {
     name: "project_get_status",
     description:
       "Project Brain: 프로젝트 메타, 마일스톤·태스크, 최근 결정/지식, Unity 파일 인덱스 건수를 한 번에 조회합니다. project_id 생략 시 default_project_id.",
@@ -464,6 +479,45 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
           offset: args.offset != null ? Number(args.offset) : 0,
         });
         return jsonResult({ items, total_hint: total });
+      }
+
+      if (name === "delete_memory") {
+        const project_id = String(args.project_id);
+        const id = args.id != null ? String(args.id).trim() : "";
+        const key = args.key != null ? String(args.key).trim() : "";
+        const session_id = args.session_id != null ? String(args.session_id).trim() : "";
+
+        if (!id && !(key && session_id)) {
+          return errResult("delete_memory requires either `id` or (`key` + `session_id`).");
+        }
+
+        if (id) {
+          const deleted = semantic.deleteMemoryById({
+            id,
+            project_id,
+            session_id: session_id || null,
+          });
+          return jsonResult({
+            mode: "id",
+            project_id,
+            id,
+            deleted,
+          });
+        }
+
+        const result = semantic.deleteMemoryByKey({
+          project_id,
+          session_id,
+          memory_key: key,
+        });
+        return jsonResult({
+          mode: "key",
+          project_id,
+          session_id,
+          key,
+          deleted_count: result.deleted,
+          deleted_ids: result.ids,
+        });
       }
 
       if (name === "project_get_status") {
