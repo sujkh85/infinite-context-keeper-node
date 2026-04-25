@@ -1,6 +1,6 @@
 {
   "name": "infinite-context",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "MCP server: persistent memory, compaction, semantic recall (Node.js port)",
   "type": "module",
   "keywords": [

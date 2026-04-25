@@ -20,10 +20,26 @@ npm install -g infinite-context
 infinite-context
 ```
 
+On macOS (MacBook), global install or first run may fail with permission errors (`EACCES`). In that case, run with `sudo`:
+
+```bash
+sudo npm install -g infinite-context
+sudo infinite-context
+```
+
+Runtime data is stored under `./data` by default, and the SQLite DB file is created there (for example, `./data/infinite_context_keeper.sqlite`).
+
 Or run without a global install:
 
 ```bash
 npx -y infinite-context
+```
+
+Check help/version:
+
+```bash
+npx -y infinite-context --help
+npx -y infinite-context --version
 ```
 
 From a git checkout: `npm install && npm run build`, then `node dist/index.js`. CLI aliases: `infinite-context` and `infinite-context-keeper`.
@@ -135,6 +151,13 @@ npm install -g infinite-context
 npx -y infinite-context
 ```
 
+도움말/버전 확인:
+
+```bash
+npx -y infinite-context --help
+npx -y infinite-context --version
+```
+
 ### 소스에서 설치·빌드
 
 ```bash
@@ -162,12 +185,27 @@ npm 전역 설치 후:
 infinite-context
 ```
 
+macOS(맥북)에서는 전역 설치/최초 실행 시 권한(`EACCES`) 오류가 날 수 있습니다. 이 경우 `sudo` 권한으로 실행하세요.
+
+```bash
+sudo npm install -g infinite-context
+sudo infinite-context
+```
+
+기본 동작 시 런타임 데이터는 `./data` 폴더에 저장되며, SQLite DB 파일도 이 위치(예: `./data/infinite_context_keeper.sqlite`)에 생성되어 동작합니다.
+
 (`infinite-context-keeper` 별칭도 동일 진입점입니다.)
 
 npx만 쓰는 경우:
 
 ```bash
 npx -y infinite-context
+```
+
+옵션 확인:
+
+```bash
+npx -y infinite-context --help
 ```
 
 소스 빌드 후:
