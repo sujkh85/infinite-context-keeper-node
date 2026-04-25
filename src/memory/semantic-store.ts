@@ -256,6 +256,21 @@ export class SemanticMemoryStore {
     return Number(res.changes ?? 0) > 0;
   }
 
+  /**
+   * semantic_memories 및 sqlite-vec(vec0) 보조 테이블의 모든 행을 삭제합니다.
+   * `SqliteMemoryStore.wipeAllCoreTables`와 함께 쓰면 동일 SQLite 파일의 사용자 데이터를 비웁니다.
+   */
+  wipeAllSemanticData(): void {
+    if (this.vecEnabled) {
+      this.db.exec(`
+        DELETE FROM semantic_memories_vec;
+        DELETE FROM semantic_vec_meta;
+      `);
+    }
+    this.db.exec(`DELETE FROM semantic_memories;`);
+    this.vecBackfillDone = false;
+  }
+
   deleteMemoryByKey(params: { project_id: string; session_id: string; memory_key: string }): { deleted: number; ids: string[] } {
     const rows = this.db
       .prepare(

@@ -310,6 +310,22 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: "reset_entire_database",
+    description:
+      "로컬 infinite_context_keeper.sqlite의 사용자 데이터 전부 삭제(메모·시맨틱·프로젝트 브레인·컴팩션·Unity 인덱스 등). 되돌릴 수 없음. confirm을 정확히 보내야 실행됩니다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        confirm: {
+          type: "string",
+          description: '반드시 문자열 "DELETE_ALL_DATA" (따옴표 없이 그대로)',
+          enum: ["DELETE_ALL_DATA"],
+        },
+      },
+      required: ["confirm"],
+    },
+  },
 ] as const;
 
 const UNIQUE_TOOLS = Array.from(new Map(TOOLS.map((tool) => [tool.name, tool])).values());
@@ -649,6 +665,18 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
           semantic_memories: semantic_chunks,
           decisions_and_knowledge: brain_ranked,
           sqlite_vec_knn: semantic.isSqliteVecActive(),
+        });
+      }
+
+      if (name === "reset_entire_database") {
+        if (String(args.confirm) !== "DELETE_ALL_DATA") {
+          return errResult('전체 삭제는 confirm을 "DELETE_ALL_DATA"로만 호출할 수 있습니다.');
+        }
+        semantic.wipeAllSemanticData();
+        sqlite.wipeAllCoreTables();
+        return jsonResult({
+          ok: true,
+          wiped: ["semantic_memories", "memories", "compaction", "project_brain", "project_files"],
         });
       }
 

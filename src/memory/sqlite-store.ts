@@ -288,4 +288,22 @@ export class SqliteMemoryStore {
     mkdirSync(d, { recursive: true });
     return d;
   }
+
+  /**
+   * 시맨틱 테이블 제외: 메모·컴팩션·프로젝트 브레인 관련 행을 모두 삭제합니다.
+   * `SemanticMemoryStore.wipeAllSemanticData`와 함께 호출하면 DB 사용자 데이터를 비울 수 있습니다.
+   */
+  wipeAllCoreTables(): void {
+    this.db.exec(`
+      DELETE FROM tasks;
+      DELETE FROM milestones;
+      DELETE FROM decisions;
+      DELETE FROM knowledge;
+      DELETE FROM project_files;
+      DELETE FROM projects;
+      DELETE FROM memories;
+      DELETE FROM compaction_cooldown;
+      DELETE FROM compaction_runs;
+    `);
+  }
 }
