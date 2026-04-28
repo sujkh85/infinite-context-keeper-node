@@ -1,5 +1,6 @@
 # Infinite Context Keeper — 기본 설정
 data_dir: "./data"
+embedding_enabled: true
 context_usage_threshold_percent: 80
 compaction_threshold_ratio: 0.8
 summarization_start_ratio: 0.75

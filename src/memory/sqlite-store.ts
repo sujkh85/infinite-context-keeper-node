@@ -1,7 +1,7 @@
-import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
+import { mkdirDataDir } from "../io/data-path.js";
 import { ProjectBrainStore } from "./project-brain-store.js";
 
 export type MemoryListItem = {
@@ -17,11 +17,10 @@ export class SqliteMemoryStore {
   readonly dataDir: string;
   readonly brain: ProjectBrainStore;
 
-  constructor(dataDir: string) {
+  /** `createMemoryStores`와 같이 이미 연 SQLite 연결을 넘길 때 사용합니다. */
+  constructor(db: DatabaseSync, dataDir: string) {
+    this.db = db;
     this.dataDir = dataDir;
-    mkdirSync(dataDir, { recursive: true });
-    const dbPath = join(dataDir, "infinite_context_keeper.sqlite");
-    this.db = new DatabaseSync(dbPath);
     this.ensureSchema();
     this.brain = new ProjectBrainStore(this.db);
   }
@@ -285,7 +284,7 @@ export class SqliteMemoryStore {
 
   archiveDir(project_id: string, session_id: string): string {
     const d = join(this.dataDir, "projects", project_id, "sessions", session_id, "archive");
-    mkdirSync(d, { recursive: true });
+    mkdirDataDir(d);
     return d;
   }
 

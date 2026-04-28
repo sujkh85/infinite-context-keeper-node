@@ -1,10 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { pipeline } from "@xenova/transformers";
-import * as sqliteVec from "sqlite-vec";
-import type { AppSettings } from "../config/settings.js";
 
 /** `Xenova/all-MiniLM-L6-v2` 등 기본 임베딩 차원 (vec0 스키마와 일치해야 함). */
 const SEMANTIC_EMBEDDING_DIM = 384;
@@ -59,51 +54,36 @@ function float32ToUint8(vec: Float32Array): Uint8Array {
   return new Uint8Array(vec.buffer, vec.byteOffset, vec.byteLength);
 }
 
-type FeaturePipeline = Awaited<ReturnType<typeof pipeline>>;
-
-type SqliteVecDb = { loadExtension: (path: string, entrypoint?: string) => void };
-
-function openDbWithOptionalVec(dbPath: string): { db: DatabaseSync; vecEnabled: boolean } {
-  try {
-    const db = new DatabaseSync(dbPath, { allowExtension: true });
-    sqliteVec.load(db as unknown as SqliteVecDb);
-    const row = db.prepare("SELECT vec_version() AS v").get() as { v: string } | undefined;
-    if (row?.v) {
-      return { db, vecEnabled: true };
-    }
-  } catch {
-    // Node 22 이하 또는 확장 로드 실패 시 내장 SQLite만 사용
-  }
-  return { db: new DatabaseSync(dbPath), vecEnabled: false };
-}
+type LocalEmbedder = (
+  input: string,
+  options: { pooling: string; normalize: boolean },
+) => Promise<{ data: Float32Array }>;
 
 export class SemanticMemoryStore {
   private readonly db: DatabaseSync;
   private readonly vecEnabled: boolean;
-  private embedder: FeaturePipeline | null = null;
+  private embedder: LocalEmbedder | null = null;
   private readonly xenovaModel: string;
   private vecBackfillDone = false;
 
-  constructor(
-    dataDir: string,
-    embeddingModel: string,
-  ) {
-    mkdirSync(dataDir, { recursive: true });
-    const dbPath = join(dataDir, "infinite_context_keeper.sqlite");
-    const opened = openDbWithOptionalVec(dbPath);
-    this.db = opened.db;
-    this.vecEnabled = opened.vecEnabled;
+  /**
+   * @param db `createMemoryStores`가 연 공유 `DatabaseSync` (다른 인스턴스가 같은 파일을 다시 열지 않도록).
+   */
+  constructor(db: DatabaseSync, vecEnabled: boolean, embeddingModel: string) {
+    this.db = db;
+    this.vecEnabled = vecEnabled;
     this.xenovaModel = toXenovaModelName(embeddingModel);
     this.ensureSchema();
-  }
-
-  static fromSettings(settings: AppSettings): SemanticMemoryStore {
-    return new SemanticMemoryStore(settings.dataDir, settings.embeddingModel);
   }
 
   /** sqlite-vec(vec0) 기반 KNN 검색 사용 여부 (Node 23.5+ 및 확장 로드 성공 시 true). */
   isSqliteVecActive(): boolean {
     return this.vecEnabled;
+  }
+
+  /** `@xenova/transformers` 임베딩 파이프라인이 이미 로드됐는지(최초 시맨틱 호출 이전은 false). */
+  isEmbedderLoaded(): boolean {
+    return this.embedder !== null;
   }
 
   private ensureSchema(): void {
@@ -181,15 +161,25 @@ export class SemanticMemoryStore {
 
   async warmup(): Promise<void> {
     if (this.embedder) return;
-    this.embedder = await pipeline("feature-extraction", this.xenovaModel);
+    try {
+      const { pipeline } = await import("@xenova/transformers");
+      this.embedder = (await pipeline(
+        "feature-extraction",
+        this.xenovaModel,
+      )) as LocalEmbedder;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(
+        `infinite-context: local embedding model failed to load (${this.xenovaModel}): ${msg} ` +
+          `Reinstall on this machine and CPU arch: rm -rf node_modules && npm install. ` +
+          "Other MCP tools work until you call semantic embedding features.",
+      );
+    }
   }
 
   private async embedText(text: string): Promise<Float32Array> {
     await this.warmup();
-    const ext = this.embedder! as (
-      input: string,
-      options: { pooling: string; normalize: boolean },
-    ) => Promise<{ data: Float32Array }>;
+    const ext = this.embedder!;
     const out = await ext(text, { pooling: "mean", normalize: true });
     return new Float32Array(out.data);
   }
@@ -450,7 +440,6 @@ export class SemanticMemoryStore {
   }): Promise<Array<{ id: string; text: string; source?: string; distance: number }>> {
     const lim = Math.max(1, Math.min(params.topK, 50));
     if (!params.items.length) return [];
-    await this.warmup();
     const queryVec = await this.embedText(params.query);
     const batchSize = 8;
     const scored: Array<{ id: string; text: string; source?: string; distance: number }> = [];

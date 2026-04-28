@@ -11,6 +11,8 @@ export type AppSettings = {
   contextUsageThresholdPercent: number;
   compactionThresholdRatio: number;
   summarizationStartRatio: number;
+  /** false이면 시맨틱 임베딩/검색 관련 도구는 비활성(또는 축소)됩니다. */
+  embeddingEnabled: boolean;
   embeddingModel: string;
   tiktokenEncoding: string;
   compactionCooldownSeconds: number;
@@ -28,6 +30,7 @@ const DEFAULTS: AppSettings = {
   contextUsageThresholdPercent: 80,
   compactionThresholdRatio: 0.8,
   summarizationStartRatio: 0.75,
+  embeddingEnabled: true,
   embeddingModel: "all-MiniLM-L6-v2",
   tiktokenEncoding: "cl100k_base",
   compactionCooldownSeconds: 300,
@@ -45,6 +48,7 @@ const CAMEL_MAP: Record<string, keyof AppSettings> = {
   context_usage_threshold_percent: "contextUsageThresholdPercent",
   compaction_threshold_ratio: "compactionThresholdRatio",
   summarization_start_ratio: "summarizationStartRatio",
+  embedding_enabled: "embeddingEnabled",
   embedding_model: "embeddingModel",
   tiktoken_encoding: "tiktokenEncoding",
   compaction_cooldown_seconds: "compactionCooldownSeconds",
@@ -67,6 +71,17 @@ function readYamlDict(path: string): Record<string, unknown> {
   return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
 }
 
+function coerceYamlBoolean(v: unknown): boolean | undefined {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number" && Number.isFinite(v)) return v !== 0;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(s)) return true;
+    if (["false", "0", "no", "off"].includes(s)) return false;
+  }
+  return undefined;
+}
+
 function coerceYaml(data: Record<string, unknown>): Record<string, unknown> {
   const out = { ...data };
   if (out.context_usage_threshold_percent == null && out.compaction_threshold_ratio != null) {
@@ -85,7 +100,10 @@ function yamlToPartialSettings(yamlDict: Record<string, unknown>): Partial<AppSe
     else if (key === "defaultProjectId") partial.defaultProjectId = String(v);
     else if (key === "openaiApiKey") partial.openaiApiKey = v == null || v === "" ? null : String(v);
     else if (key === "openaiBaseUrl") partial.openaiBaseUrl = String(v);
-    else if (key === "embeddingModel") partial.embeddingModel = String(v);
+    else if (key === "embeddingEnabled") {
+      const b = coerceYamlBoolean(v);
+      if (b !== undefined) partial.embeddingEnabled = b;
+    } else if (key === "embeddingModel") partial.embeddingModel = String(v);
     else if (key === "tiktokenEncoding") partial.tiktokenEncoding = String(v);
     else if (key === "compactionModel") partial.compactionModel = String(v);
     else if (typeof v === "number" && Number.isFinite(v)) {
@@ -112,6 +130,11 @@ function envOverrides(): Partial<AppSettings> {
       out.openaiApiKey = raw === "" ? null : raw;
       continue;
     }
+    if (field === "embeddingEnabled") {
+      const low = raw.toLowerCase();
+      out.embeddingEnabled = ["1", "true", "yes", "on"].includes(low);
+      continue;
+    }
     if (
       field === "dataDir" ||
       field === "defaultProjectId" ||
@@ -134,6 +157,9 @@ function resolveConfigPath(): string {
   if (override) return resolve(override);
   return join(PROJECT_ROOT, "config", "default.yaml");
 }
+
+/** 테스트·도구에서 기본값과 병합할 때 사용합니다. */
+export const defaultAppSettings: AppSettings = DEFAULTS;
 
 export function loadSettings(): AppSettings {
   const yamlPath = resolveConfigPath();

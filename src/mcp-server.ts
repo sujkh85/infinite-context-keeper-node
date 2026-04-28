@@ -2,6 +2,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { AppSettings } from "./config/settings.js";
+import { getPackageVersion } from "./package-info.js";
 import { estimateContextTokens } from "./monitoring/token-estimate.js";
 import { SqliteMemoryStore } from "./memory/sqlite-store.js";
 import { SemanticMemoryStore } from "./memory/semantic-store.js";
@@ -15,6 +16,16 @@ function jsonResult(obj: unknown) {
 
 function errResult(message: string) {
   return { isError: true as const, content: [{ type: "text" as const, text: message }] };
+}
+
+/** 시맨틱 임베딩이 꺼져 있을 때 관련 도구 차단용 */
+function embeddingBlocked(settings: AppSettings): ReturnType<typeof errResult> | null {
+  if (!settings.embeddingEnabled) {
+    return errResult(
+      'Local embeddings are disabled (embedding_enabled: false or ICK_EMBEDDING_ENABLED=0). Enable in YAML/env to use semantic tools.',
+    );
+  }
+  return null;
 }
 
 function effectiveProjectId(args: Record<string, unknown>, settings: AppSettings): string {
@@ -54,6 +65,12 @@ async function mergedChromaForTask(
 }
 
 const TOOLS = [
+  {
+    name: "get_server_info",
+    description:
+      "런타임 진단: 패키지·Node 버전, 해석된 data_dir, embedding_enabled, sqlite-vec 활성 여부, 임베딩 파이프라인 로드 여부 등.",
+    inputSchema: { type: "object", properties: {} },
+  },
   {
     name: "get_context_usage",
     description:
@@ -331,10 +348,8 @@ const TOOLS = [
 const UNIQUE_TOOLS = Array.from(new Map(TOOLS.map((tool) => [tool.name, tool])).values());
 
 export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemoryStore, semantic: SemanticMemoryStore) {
-  await semantic.warmup();
-
   const server = new Server(
-    { name: "Infinite Context Keeper", version: "0.1.0" },
+    { name: "Infinite Context Keeper", version: getPackageVersion() },
     { capabilities: { tools: {} } },
   );
 
@@ -345,6 +360,22 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
 
     try {
+      if (name === "get_server_info") {
+        return jsonResult({
+          package_version: getPackageVersion(),
+          node_version: process.version,
+          platform: process.platform,
+          arch: process.arch,
+          data_dir_resolved: settings.dataDir,
+          embedding_enabled: settings.embeddingEnabled,
+          embedding_model_configured: settings.embeddingModel,
+          sqlite_vec_active: semantic.isSqliteVecActive(),
+          embedder_loaded: semantic.isEmbedderLoaded(),
+          default_project_id: settings.defaultProjectId,
+          ick_settings_yaml: process.env.ICK_SETTINGS_YAML?.trim() || null,
+        });
+      }
+
       if (name === "get_context_usage") {
         const max_tokens = Number(args.max_tokens);
         const used_tokens = args.used_tokens != null ? Number(args.used_tokens) : null;
@@ -386,6 +417,8 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
       }
 
       if (name === "save_memory") {
+        const blocked = embeddingBlocked(settings);
+        if (blocked) return blocked;
         const metadata = (args.metadata as Record<string, unknown>) ?? {};
         const mid = await semantic.upsertMemory({
           project_id: String(args.project_id),
@@ -404,6 +437,8 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
       }
 
       if (name === "semantic_search_memory") {
+        const blocked = embeddingBlocked(settings);
+        if (blocked) return blocked;
         const raw = await semantic.semanticSearch({
           query: String(args.query),
           limit: args.limit != null ? Number(args.limit) : 8,
@@ -419,6 +454,8 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
       }
 
       if (name === "inject_relevant_memories") {
+        const blocked = embeddingBlocked(settings);
+        if (blocked) return blocked;
         const raw = await semantic.semanticSearch({
           query: String(args.query),
           limit: args.limit != null ? Number(args.limit) : 6,
@@ -446,6 +483,8 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
       }
 
       if (name === "search_and_inject_memory") {
+        const blocked = embeddingBlocked(settings);
+        if (blocked) return blocked;
         let enriched = String(args.task_description).trim();
         if (args.include_recent_compaction_in_query !== false) {
           const hints = sqlite.fetchRecentCompactionSnippets({
@@ -647,13 +686,29 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
         const query = String(args.query);
         const limit = args.limit != null ? Number(args.limit) : 12;
         const half = Math.max(1, Math.ceil(limit / 2));
+        const brainChunks = sqlite.brain.listTextChunksForVectorSearch(project_id, 200);
+        if (!settings.embeddingEnabled) {
+          const take = brainChunks.slice(0, Math.max(1, limit));
+          return jsonResult({
+            query,
+            project_id,
+            semantic_memories: [],
+            decisions_and_knowledge: take.map((c, idx) => ({
+              id: c.id,
+              text: c.text,
+              source: c.source,
+              distance: idx,
+            })),
+            sqlite_vec_knn: false,
+            embedding_disabled_fallback: true,
+          });
+        }
         const semantic_chunks = await semantic.semanticSearch({
           query,
           limit: half,
           project_id,
           session_id: null,
         });
-        const brainChunks = sqlite.brain.listTextChunksForVectorSearch(project_id, 200);
         const brain_ranked = await semantic.rankTextsBySimilarity({
           query,
           items: brainChunks.map((c) => ({ id: c.id, text: c.text, source: c.source })),
@@ -692,12 +747,14 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
           limit: 2,
         });
         const qSeed = [bundle.project?.goal, bundle.project?.name].filter(Boolean).join("\n") || "프로젝트 작업 재개";
-        const semantic_top = await semantic.semanticSearch({
-          query: qSeed,
-          limit: Math.max(1, Math.min(top_semantic, 20)),
-          project_id,
-          session_id: null,
-        });
+        const semantic_top = settings.embeddingEnabled
+          ? await semantic.semanticSearch({
+              query: qSeed,
+              limit: Math.max(1, Math.min(top_semantic, 20)),
+              project_id,
+              session_id: null,
+            })
+          : [];
         const lines: string[] = [];
         lines.push("# Project resume");
         lines.push("");
@@ -744,6 +801,10 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
         lines.push("");
         lines.push(`## Unity 파일 인덱스: **${bundle.indexed_file_count}**개`);
         lines.push("");
+        if (!settings.embeddingEnabled) {
+          lines.push("_시맨틱 메모 검색 비활성화(`embedding_enabled: false`)._");
+          lines.push("");
+        }
         if (compaction) {
           lines.push("---");
           lines.push("## 최근 compaction 요약 (SQLite)");

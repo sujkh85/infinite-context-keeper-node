@@ -15,25 +15,43 @@
 
 ### Install & run
 
+**Recommended (avoids global npm permission issues):**
+
+```bash
+npx -y infinite-context
+```
+
+Global install:
+
 ```bash
 npm install -g infinite-context
 infinite-context
 ```
 
-On macOS (MacBook), global install or first run may fail with permission errors (`EACCES`). In that case, run with `sudo`:
+#### macOS and permission errors (`EACCES`)
+
+On MacBooks and other Macs, `npm install -g` often fails with `EACCES` when npm’s global prefix (for example `/usr/local`) is owned by root or not writable by your user. **Prefer `npx`** so you do not need a global install.
+
+To use a global CLI without `sudo`, install npm’s global packages under your home directory:
+
+```bash
+mkdir -p ~/.npm-global
+npm config set prefix ~/.npm-global
+# Then add this line to ~/.zshrc or ~/.bash_profile and restart the shell:
+export PATH="$HOME/.npm-global/bin:$PATH"
+npm install -g infinite-context
+```
+
+Using `sudo` works but can leave **root-owned** files under the global prefix and cause more permission errors later; use it only if the approaches above are not possible:
 
 ```bash
 sudo npm install -g infinite-context
 sudo infinite-context
 ```
 
-Runtime data is stored under `./data` by default, and the SQLite DB file is created there (for example, `./data/infinite_context_keeper.sqlite`).
+#### Where data is stored
 
-Or run without a global install:
-
-```bash
-npx -y infinite-context
-```
+By default, runtime data goes under `./data` **relative to the process current working directory** (SQLite file e.g. `./data/infinite_context_keeper.sqlite`). MCP hosts should set **`cwd`** to the project (for example Cursor’s `"${workspaceFolder}"`), or set **`ICK_DATA_DIR`** / YAML **`data_dir`** to an **absolute path** so the database is created in a predictable, writable place.
 
 Check help/version:
 
@@ -44,12 +62,15 @@ npx -y infinite-context --version
 
 From a git checkout: `npm install && npm run build`, then `node dist/index.js`. CLI aliases: `infinite-context` and `infinite-context-keeper`.
 
+If local embeddings fail to start (for example errors loading native helpers used by `@xenova/transformers`), reinstall dependencies **on the same machine and architecture** (`rm -rf node_modules && npm install`) so optional native modules match your Mac (Apple Silicon vs Intel).
+
 ### Configuration (short)
 
 1. Defaults ship in `config/default.yaml` (relative to the package root when installed from npm).
 2. Point **`ICK_SETTINGS_YAML`** at your own YAML (**absolute path**) for per-project overrides.
 3. Any setting can be overridden with **`ICK_` + SNAKE_UPPER** env vars (e.g. `ICK_OPENAI_API_KEY`).
 4. **`default_project_id`** in YAML or **`ICK_DEFAULT_PROJECT_ID`** selects the default `project_id` for Project Brain tools when the tool omits `project_id` (default string: `default`).
+5. **`ICK_DATA_DIR`** or YAML **`data_dir`** sets the directory for SQLite and runtime files. Use an **absolute path** when the process cwd is unpredictable (recommended for some MCP configs); otherwise `./data` is resolved from cwd.
 
 ### Tools
 
@@ -139,17 +160,42 @@ npm: [infinite-context](https://www.npmjs.com/package/infinite-context)
 
 ### 설치 (npm)
 
+**권장:** 전역 설치 없이 실행(맥에서 `EACCES` 회피에 유리):
+
+```bash
+npx -y infinite-context
+```
+
 전역 CLI:
 
 ```bash
 npm install -g infinite-context
 ```
 
-또는 실행할 때만 내려받기:
+#### macOS·권한 오류 (`EACCES`)
+
+맥북 등 macOS에서는 npm 전역 prefix(예: `/usr/local`)가 현재 사용자에게 쓰기 불가면 `npm install -g`가 `EACCES`로 실패합니다. 가능하면 **`npx`로만 실행**하는 것을 권장합니다.
+
+`sudo` 없이 전역 CLI를 쓰려면 홈 디렉터리 아래에 전역 패키지를 두고 `PATH`만 잡습니다:
 
 ```bash
-npx -y infinite-context
+mkdir -p ~/.npm-global
+npm config set prefix ~/.npm-global
+# 아래 한 줄을 ~/.zshrc 또는 ~/.bash_profile에 넣은 뒤 셸을 다시 여세요:
+export PATH="$HOME/.npm-global/bin:$PATH"
+npm install -g infinite-context
 ```
+
+`sudo npm install -g`는 동작할 수 있으나 전역 디렉터리에 **root 소유 파일**이 남아 이후에도 권한 문제가 반복되기 쉽습니다. 위 방법이 어려울 때만 사용하세요:
+
+```bash
+sudo npm install -g infinite-context
+sudo infinite-context
+```
+
+#### 데이터 저장 위치
+
+기본값 `./data`는 **프로세스 시작 시 현재 작업 디렉터리(cwd)** 기준입니다(SQLite 예: `./data/infinite_context_keeper.sqlite`). Cursor 등 MCP에서는 **`cwd`를 프로젝트로 지정**(예: `"${workspaceFolder}"`)하거나, **`ICK_DATA_DIR`** 또는 YAML **`data_dir`**에 **절대 경로**를 두어 예측 가능한 위치에 DB가 생기게 하세요.
 
 도움말/버전 확인:
 
@@ -157,6 +203,8 @@ npx -y infinite-context
 npx -y infinite-context --help
 npx -y infinite-context --version
 ```
+
+로컬 클론에서 `@xenova/transformers` 관련 네이티브 모듈 오류가 나면, **같은 맥·같은 아키텍처**에서 `node_modules`를 다시 설치하세요(`rm -rf node_modules && npm install`).
 
 ### 소스에서 설치·빌드
 
@@ -175,38 +223,29 @@ npm run build
 
 개별 설정은 환경변수 **`ICK_`** 접두사 + YAML 필드명의 스네이크 대문자(예: `openai_api_key` → `ICK_OPENAI_API_KEY`)로 덮어쓸 수 있습니다.
 
+**데이터 디렉터리:** 환경변수 **`ICK_DATA_DIR`** 또는 YAML **`data_dir`**로 SQLite·런타임 파일 위치를 지정합니다. MCP 등에서 cwd가 매번 달라질 수 있으면 **절대 경로**를 권장합니다. 생략 시 `./data`는 **프로세스 cwd** 기준으로 해석됩니다.
+
 **Project Brain 기본 프로젝트:** YAML의 `default_project_id` 또는 환경변수 **`ICK_DEFAULT_PROJECT_ID`**로, 도구 인자에서 `project_id`를 생략했을 때 쓸 ID를 지정합니다(기본값 문자열 `default`).
 
 ### 실행 (stdio MCP)
 
-npm 전역 설치 후:
+전역 설치했다면:
 
 ```bash
 infinite-context
 ```
 
-macOS(맥북)에서는 전역 설치/최초 실행 시 권한(`EACCES`) 오류가 날 수 있습니다. 이 경우 `sudo` 권한으로 실행하세요.
-
-```bash
-sudo npm install -g infinite-context
-sudo infinite-context
-```
-
-기본 동작 시 런타임 데이터는 `./data` 폴더에 저장되며, SQLite DB 파일도 이 위치(예: `./data/infinite_context_keeper.sqlite`)에 생성되어 동작합니다.
-
-(`infinite-context-keeper` 별칭도 동일 진입점입니다.)
-
-npx만 쓰는 경우:
+전역 설치 없이:
 
 ```bash
 npx -y infinite-context
 ```
 
-옵션 확인:
+맥에서 전역 설치·권한 문제는 위 **「설치 (npm)」** 절의 macOS·`EACCES`·데이터 경로 안내를 참고하세요.
 
-```bash
-npx -y infinite-context --help
-```
+런타임 데이터는 기본적으로 **`./data`**(cwd 기준)에 저장되며, SQLite 파일도 같은 위치에 생성됩니다(예: `./data/infinite_context_keeper.sqlite`).
+
+(`infinite-context-keeper` 별칭도 동일 진입점입니다.)
 
 소스 빌드 후:
 
