@@ -34,7 +34,32 @@ function effectiveProjectId(args: Record<string, unknown>, settings: AppSettings
   return settings.defaultProjectId;
 }
 
-async function mergedChromaForTask(
+function buildResumeSearchSeed(params: {
+  projectName?: string | null;
+  projectGoal?: string | null;
+  milestones: Array<{ title: string; description?: string | null; status?: string | null; tasks: Array<{ title: string; description?: string | null; status?: string | null; file_path?: string | null }> }>;
+  compaction: string;
+}): string {
+  const lines: string[] = [];
+  if (params.projectName) lines.push(`Project: ${params.projectName}`);
+  if (params.projectGoal) lines.push(`Goal: ${params.projectGoal}`);
+
+  const unfinishedTasks = params.milestones.flatMap((m) =>
+    m.tasks
+      .filter((t) => !["done", "completed", "cancelled", "canceled"].includes(String(t.status ?? "").toLowerCase()))
+      .map((t) => {
+        const file = t.file_path ? ` file=${t.file_path}` : "";
+        const desc = t.description ? ` ${t.description.slice(0, 500)}` : "";
+        return `Incomplete task: ${m.title} / ${t.title}${file}${desc}`;
+      }),
+  );
+  lines.push(...unfinishedTasks.slice(0, 20));
+  if (params.compaction) lines.push(`Recent compaction:\n${params.compaction.slice(0, 3000)}`);
+  lines.push("next_steps blockers failures retry current progress incomplete tasks decisions");
+  return lines.filter(Boolean).join("\n").trim() || "프로젝트 작업 재개 next_steps incomplete tasks";
+}
+
+async function mergedSemanticMemoriesForTask(
   semantic: SemanticMemoryStore,
   params: { query: string; project_id: string; session_id: string; top_k: number; fill_from_project: boolean },
 ) {
@@ -403,6 +428,7 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
         const result = await runTriggerCompaction({
           settings,
           store: sqlite,
+          semantic,
           project_id: String(args.project_id),
           session_id: String(args.session_id),
           conversation_text: (args.conversation_text as string) ?? null,
@@ -497,7 +523,7 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
               `${enriched}\n\n--- Recent compaction context (SQLite, boosts retrieval only) ---\n${hints}`;
           }
         }
-        const raw = await mergedChromaForTask(semantic, {
+        const raw = await mergedSemanticMemoriesForTask(semantic, {
           query: enriched,
           project_id: String(args.project_id),
           session_id: String(args.session_id),
@@ -746,7 +772,12 @@ export async function runMcpServer(settings: AppSettings, sqlite: SqliteMemorySt
           session_id,
           limit: 2,
         });
-        const qSeed = [bundle.project?.goal, bundle.project?.name].filter(Boolean).join("\n") || "프로젝트 작업 재개";
+        const qSeed = buildResumeSearchSeed({
+          projectName: bundle.project?.name,
+          projectGoal: bundle.project?.goal,
+          milestones: bundle.milestones,
+          compaction,
+        });
         const semantic_top = settings.embeddingEnabled
           ? await semantic.semanticSearch({
               query: qSeed,

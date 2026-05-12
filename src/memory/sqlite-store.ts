@@ -1,8 +1,9 @@
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { mkdirDataDir } from "../io/data-path.js";
 import { ProjectBrainStore } from "./project-brain-store.js";
+import { migrateSchemaVersion } from "./schema-version.js";
 
 export type MemoryListItem = {
   memory_id: string;
@@ -125,6 +126,7 @@ export class SqliteMemoryStore {
       CREATE INDEX IF NOT EXISTS idx_project_files_project
         ON project_files(project_id);
     `);
+    migrateSchemaVersion(this.db);
   }
 
   insertMemory(params: {

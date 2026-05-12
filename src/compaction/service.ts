@@ -2,7 +2,8 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { AppSettings } from "../config/settings.js";
-import { SqliteMemoryStore } from "../memory/sqlite-store.js";
+import type { SqliteMemoryStore } from "../memory/sqlite-store.js";
+import type { SemanticMemoryStore } from "../memory/semantic-store.js";
 import { heuristicCompaction } from "./heuristic.js";
 import { callCompactionLlm } from "./llm.js";
 import { splitTextByTokenRatio } from "./split.js";
@@ -21,6 +22,7 @@ export type TriggerCompactionResult = {
   key_facts: Record<string, string[]> | null;
   old_bullets: string | null;
   final_summary: string | null;
+  semantic_memory_ids?: string[];
 };
 
 function normalizeDialogue(params: {
@@ -62,6 +64,7 @@ function writeArchive(
 export async function runTriggerCompaction(params: {
   settings: AppSettings;
   store: SqliteMemoryStore;
+  semantic?: Pick<SemanticMemoryStore, "upsertMemory"> | null;
   project_id: string;
   session_id: string;
   conversation_text: string | null | undefined;
@@ -234,6 +237,41 @@ export async function runTriggerCompaction(params: {
     kind: "compaction_key_facts",
   });
 
+  const semanticMemoryIds: string[] = [];
+  if (params.settings.embeddingEnabled && params.semantic) {
+    const metadata = {
+      source: "trigger_compaction",
+      compaction_id: cid,
+      mode: params.mode,
+      archive_path: archivePath,
+      sqlite_memory_ids: [midSummary, midFacts],
+    };
+    try {
+      semanticMemoryIds.push(
+        await params.semantic.upsertMemory({
+          project_id: params.project_id,
+          session_id: params.session_id,
+          memory_key: `compaction:${cid}:summary`,
+          content: summaryBody,
+          metadata: { ...metadata, kind: "compaction_summary" },
+          importance: 8,
+        }),
+      );
+      semanticMemoryIds.push(
+        await params.semantic.upsertMemory({
+          project_id: params.project_id,
+          session_id: params.session_id,
+          memory_key: `compaction:${cid}:key_facts`,
+          content: kfJson,
+          metadata: { ...metadata, kind: "compaction_key_facts" },
+          importance: 9,
+        }),
+      );
+    } catch (e) {
+      msgNote += ` semantic memory 저장 실패(${e instanceof Error ? e.message : String(e)}).`;
+    }
+  }
+
   params.store.touchCooldown(params.project_id, params.session_id);
   params.store.logCompactionRun(params.project_id, params.session_id);
 
@@ -246,6 +284,7 @@ export async function runTriggerCompaction(params: {
     message: msgNote,
     archive_path: archivePath,
     memory_ids: [midSummary, midFacts],
+    semantic_memory_ids: semanticMemoryIds,
     key_facts: out.key_facts,
     old_bullets: out.old_bullets,
     final_summary: out.final_summary,
